@@ -87,7 +87,6 @@ The round **1.28" GC9A01 IPS** display runs the **LVGL** graphics library at **6
 | **Electrolytic capacitors** | 100uF/25V, 100uF/10V (buck converter filtering), 1uF (ADC smoothing) | — |
 | **Wires** | Hookup / jumper wires | — |
 
-> **Important:** Remove the 120 ohm termination resistor from the SN65HVD230 module if present.
 
 ## Wiring
 
