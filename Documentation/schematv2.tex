@@ -1,0 +1,131 @@
+\documentclass[border=10pt]{standalone}
+\usepackage[european, straightvoltages]{circuitikz}
+\usepackage{tikz}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% Ustawienia globalne
+\ctikzset{
+    bipoles/thickness=1.2,
+    nodes width=0.1,
+    font=\sffamily\small
+}
+
+\begin{document}
+
+\begin{circuitikz}[scale=1.1, transform shape]
+
+% ==========================================================
+% 1. WTYCZKA SAMOCHODOWA (M15-B) - LEWA STRONA (BARDZO DALEKO)
+% ==========================================================
+\draw (-12, 0) node[draw, thick, fill=lightgray!20, minimum width=2.5cm, minimum height=14cm, rounded corners] (CONN) {};
+\node[rotate=90, font=\bfseries] at (CONN.center) {Złącze M15-B (Hyundai)};
+
+% Definicja współrzędnych pinów wtyczki
+\coordinate (P_IGN) at (-10.75, 6);   \node[left] at (-10.8, 6) {Pin 3: IGN (+12V)};
+\coordinate (P_BAT) at (-10.75, 2);   \node[left] at (-10.8, 2) {Pin 6: BAT (+12V)};
+\coordinate (P_ILL) at (-10.75, -2);  \node[left] at (-10.8, -2) {Pin 9: ILL (+12V)}; % Przesunięte w dół
+\coordinate (P_GND) at (-10.75, -4);  \node[left] at (-10.8, -4) {Pin 12: GND};
+\coordinate (P_CANH) at (-10.75, -6); \node[left] at (-10.8, -6) {Pin 7: CAN H};
+\coordinate (P_CANL) at (-10.75, -7); \node[left] at (-10.8, -7) {Pin 1: CAN L};
+
+% ==========================================================
+% 2. ESP32 (CENTRUM) - DUŻY ODSTĘP
+% ==========================================================
+\draw (4, 0) node[draw, very thick, fill=white, minimum width=6cm, minimum height=12cm] (ESP) {};
+\node[above, font=\bfseries\large] at (ESP.north) {ESP32-WROOM-32};
+
+% Piny ESP (Lewa - Wejścia/Zasilanie)
+\coordinate (E_VIN) at (1, 5);       \node[right] at (1, 5) {VIN (5V)};
+\coordinate (E_GND) at (1, 4);       \node[right] at (1, 4) {GND};
+\coordinate (E_ADC) at (1, 2);       \node[right] at (1, 2) {GPIO 34 (ADC)};
+\coordinate (E_ILL) at (1, -2);      \node[right] at (1, -2) {GPIO 13 (ILL)}; % Zgodne z P_ILL
+
+% Piny ESP (Prawa - Peryferia)
+\coordinate (E_3V3) at (7, 4);       \node[left] at (7, 4) {3V3 Out};
+\coordinate (E_SPI) at (7, 2);       \node[left] at (7, 2) {VSPI (18,23,4,2,5)};
+\coordinate (E_RX) at (7, -3);       \node[left] at (7, -3) {GPIO 16 (RX)};
+\coordinate (E_TX) at (7, -4);       \node[left] at (7, -4) {GPIO 17 (TX)};
+
+% ==========================================================
+% 3. ZASILANIE (BUCK CONVERTER) - GÓRA PO LEWEJ
+% ==========================================================
+\draw (-4, 7) node[draw, fill=white, minimum width=3.5cm, minimum height=2cm] (BUCK) {PRZETWORNICA};
+\node at (-4, 7.5) {\small 12V $\to$ 5V (Step-Down)};
+
+% Wejście przetwornicy (z IGN)
+\draw (P_IGN) -- (-8, 6) -- (-8, 7) -- (BUCK.west);
+\draw (-7, 7) to[pC, l=100$\mu$F/25V, *-] (-7, 5.5) node[ground]{}; % C Input
+
+% Wyjście przetwornicy do ESP
+\draw (BUCK.east) -- (0, 7) -- (0, 5) -- (E_VIN);
+\draw (-1, 7) to[pC, l=100$\mu$F/10V, *-] (-1, 5.5) node[ground]{}; % C Output
+
+% Masa Przetwornicy
+\draw (BUCK.south) -- (-4, 5) node[ground]{};
+
+% Masa ESP
+\draw (E_GND) -- (-2, 4) node[ground]{};
+
+% ==========================================================
+% 4. WOLTOMIERZ (DZIELNIK NAPIĘCIA) - DUŻO MIEJSCA
+% ==========================================================
+% Linia od wtyczki do rezystora
+\draw (P_BAT) -- (-6, 2) to[R, l=100k (R1), -*] (-3, 2) coordinate(DIV);
+
+% Dzielnik do masy
+\draw (DIV) -- (-3, 0.5) to[R, l=20k (R2)] (-3, -0.5) node[ground]{};
+
+% Filtr kondensatorowy
+\draw (DIV) -- (-1.5, 2) to[pC, l=1$\mu$F, *-] (-1.5, 0.5) node[ground]{};
+
+% Połączenie do ESP (długa prosta linia)
+\draw (DIV) -- (E_ADC);
+
+% ==========================================================
+% 5. WEJŚCIE ŚWIATEŁ (ILL)
+% ==========================================================
+\draw (P_ILL) -- (-6, -2) to[R, l=20k] (-3, -2) coordinate(ILL_NODE);
+\draw (ILL_NODE) -- (E_ILL);
+
+% Zener zabezpieczający 3.3V
+\draw (ILL_NODE) to[zD, l=3.3V, *-] (-3, -3.5) node[ground]{};
+
+% ==========================================================
+% 6. PERYFERIA (LCD i CAN) - PRAWA STRONA (ODSUNIĘTE)
+% ==========================================================
+
+% LCD GC9A01 (Wysoko)
+\draw (13, 3) node[draw, circle, very thick, minimum size=3.5cm, align=center] (LCD) {\textbf{LCD}\\GC9A01};
+
+% Zasilanie LCD
+\draw (E_3V3) -- (8, 4) -- (8, 5) -- (13, 5) -- (LCD.north);
+\draw (LCD.east) -- (15, 3) node[ground]{};
+
+% Magistrala SPI
+\draw (E_SPI) -- (9, 2) -- (LCD.west);
+\node[above, font=\scriptsize] at (10, 2.1) {SCK (18), SDA (23), RES (4), DC (2), CS (5)};
+
+% Moduł CAN (Nisko)
+\draw (13, -3.5) node[draw, fill=white, minimum width=3.5cm, minimum height=2.5cm] (CAN) {SN65HVD230};
+
+% Zasilanie CAN
+\draw (8, 4) -- (8, -2.5) -- (CAN.north); % 3.3V z tej samej linii co LCD
+\draw (CAN.east) -- (15, -3.5) node[ground]{};
+
+% Sygnały CAN (RX/TX)
+\draw (E_RX) -- (CAN.west |- E_RX);
+\draw (E_TX) -- (CAN.west |- E_TX);
+
+% Wyjście na magistralę (Do wtyczki - Bardzo długa pętla dołem)
+\draw (CAN.south) -- (13, -5.5) coordinate(CBUS);
+\draw (CBUS) -- (13, -8) -- (-9, -8) -- (-9, -6) -- (P_CANH);
+\draw (-9, -8) -- (-9, -7) -- (P_CANL);
+\node[above] at (2, -8) {Magistrala CAN (Skrętka - Twisted Pair)};
+
+% Główna masa wtyczki
+\draw (P_GND) -- (-10.75, -4) node[ground]{};
+
+\end{circuitikz}
+
+\end{document}
