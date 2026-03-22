@@ -186,6 +186,14 @@ This is a working prototype built on a universal PCB with through-hole component
 - **Remove the analog voltage divider** circuit — read all data exclusively from the CAN bus (the 70/30 sensor fusion was a prototype compromise)
 - Solder all components directly onto the finished PCB module
 
+## Future Ideas
+
+- **OBD / K-Line diagnostics** — add an external OBD module (e.g. ELM327 compatible) connected to the ESP32 via K-Line to read and clear DTC fault codes directly from the ECU, turning the gauge into a basic diagnostic tool
+- **SD card logging** — add a micro SD card module to record telemetry data. When a **Check Engine** light (MIL) is detected on the CAN bus, automatically start capturing detailed logs (CAN frames, sensor readings, timestamps) for 10-20 minutes, providing a "black box" snapshot of what happened and why the fault was triggered
+- **Extended CAN data** — decode additional CAN IDs to display more parameters (e.g. intake air temperature, throttle position, boost pressure on turbo models)
+- **Wi-Fi / Bluetooth data export** — use the ESP32's built-in wireless capabilities to push logged data to a phone app or a simple web dashboard for review after driving
+- **Multi-screen UI** — add swipeable or button-toggled screens to show different data views (e.g. a dedicated diagnostics screen, a trip computer screen, a performance screen with 0-100 km/h timer)
+
 ## Repository Structure
 
 ```
