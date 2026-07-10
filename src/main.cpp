@@ -42,8 +42,9 @@ static lv_color_t buf[BUFFER_SIZE];
 TFT_eSPI tft = TFT_eSPI();
 
 // --- GLOBAL VARIABLES ---
-// fuelAvg: RollingAverage object used to smooth out the L/100km fuel consumption calculations over time.
-RollingAverage fuelAvg;
+// recentFuel: distance-weighted L/100km over the most recent 1 km.
+// Fuel consumed at idle is included and raises the city-driving result.
+RecentFuelConsumption recentFuel;
 
 // Engine Data
 int current_speed = 0;          // km/h
@@ -52,12 +53,9 @@ int current_coolant_temp = 0;   // °C
 float current_voltage = 12.0f;  // Volts
 // can_voltage: Voltage value reported directly by the ECU over the CAN bus.
 float can_voltage = 0.0f;       // Volts (from ECU)
-float current_lph = 0.0f;       // Liters per hour (L/h) - updated continuously
 bool is_night_mode = false;     // Night Mode Status
 
-// Fuel Calculation Variables (ID 0x545)
-// These act as buffers for the "Time Window Accumulation Algorithm"
-uint16_t prev_fuel_ul = 0;
+// Fuel calculation timing (ID 0x545)
 unsigned long prev_fuel_time = 0;
 bool first_fuel_packet = true;
 
@@ -146,17 +144,12 @@ void processCAN() {
                 break;
 
             // --- FRAME: DME4 (Fuel Consumption & Voltage) ---
-            // The ECU sends a "Delta" (amount injected since the last frame), not an absolute total counter.
+            // FCO is the fuel injected since the preceding 0x545 frame.
             case 0x545:
                 if (message.data_length_code >= 4) {
                     // --- ECU VOLTAGE READING (Byte 3) ---
                     can_voltage = (float)message.data[3] * 0.1f;
 
-                    // --- FUEL CONSUMPTION ALGORITHM ---
-                    // Problem: "Injector Micro-pulses" - Calculating L/h frame-by-frame causes severe jitter,
-                    // especially at idle where fuel pulses are tiny and inconsistent.
-                    // Solution: "Time Window Accumulation Algorithm".
-                    // We accumulate the fuel usage over a 2-second time window to prevent L/h jitter.
                     uint16_t delta_raw = (message.data[2] << 8) | message.data[1];
                     unsigned long current_time = millis();
 
@@ -164,37 +157,20 @@ void processCAN() {
                         unsigned long delta_time_ms = current_time - prev_fuel_time;
 
                         if (delta_time_ms > 0) {
-                            // Static variables to accumulate data over a 2-second window
-                            static uint32_t fuel_accumulated_raw = 0;
-                            static unsigned long time_accumulated_ms = 0;
+                            // OpenGK DME4 scaling: one raw unit equals 0.128 microliters.
+                            double fuel_l = ((double)delta_raw * 0.128) / 1000000.0;
 
-                            fuel_accumulated_raw += delta_raw;
-                            time_accumulated_ms += delta_time_ms;
+                            // Integrate distance from the latest CAN speed sample.
+                            // At a stop distance remains zero, but fuel is still accumulated.
+                            double distance_km =
+                                ((double)current_speed * (double)delta_time_ms) / 3600000.0;
 
-                            // Przeliczanie wyników co 2000 ms (2 sekundy) dla maksymalnej stabilności
-                            if (time_accumulated_ms >= 2000) {
-                                float actual_ul = (float)fuel_accumulated_raw * 0.128f;
-                                float liters_consumed = actual_ul / 1000000.0f;
-                                float hours_passed = (float)time_accumulated_ms / 3600000.0f;
-                                
-                                // Stabilne spalanie godzinowe
-                                current_lph = liters_consumed / hours_passed;
-
-                                // Zapis do uśredniania L/100km tylko podczas jazdy (>5 km/h)
-                                // Ponieważ zapisujemy co 2 sekundy, bufor w logic.h obejmuje teraz znacznie dłuższą trasę
-                                if (current_speed > 5) {
-                                    float l_100km = (current_lph / (float)current_speed) * 100.0f;
-                                    fuelAvg.add(l_100km);
-                                }
-
-                                // Reset akumulatorów dla kolejnego okna czasowego
-                                fuel_accumulated_raw = 0;
-                                time_accumulated_ms = 0;
-                            }
+                            recentFuel.add(fuel_l, distance_km);
                         }
                     } else {
                         first_fuel_packet = false;
                     }
+
                     prev_fuel_time = current_time;
                 }
                 break;
@@ -280,7 +256,7 @@ void loop() {
 
     // 5. Logic Updates
     // Przekazanie przetworzonych wyników do interfejsu LVGL
-    update_engine_status(current_coolant_temp, fuelAvg.getAverage(), current_speed, current_lph, is_night_mode);
+    update_engine_status(current_coolant_temp, recentFuel.getAverageL100km(), is_night_mode);
     update_gauge_logic(display_voltage, is_night_mode);
 
     delay(2); // Small yield
