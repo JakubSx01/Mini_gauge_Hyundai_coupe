@@ -15,7 +15,7 @@ This project solves that problem. **Mini Gauge** is a compact, custom-built digi
 
 - **Voltmeter** — battery/charging system voltage
 - **Coolant temperature** — read directly from the ECU via CAN bus
-- **Average fuel consumption** — calculated in real-time (L/100km while driving, L/h at idle)
+- **Recent fuel consumption** — distance-weighted L/100km from the latest 1 km, including fuel used while idling
 
 Everything runs on an **ESP32** microcontroller with a round **1.28" IPS display (GC9A01)**, communicating with the car's ECU via a **CAN bus sniffer** based on the Siemens SIMK43/SIMK4x protocol documentation.
 
@@ -23,7 +23,7 @@ Everything runs on an **ESP32** microcontroller with a round **1.28" IPS display
 
 ### CAN Bus Sniffer
 
-The ESP32 passively listens to the vehicle's CAN bus using an **SN65HVD230** transceiver module. It decodes specific CAN message IDs from the Siemens SIMK43 ECU to extract:
+The ESP32 passively listens to the vehicle's CAN bus in TWAI listen-only mode using an **SN65HVD230** transceiver module. Remote and extended frames are ignored, stale values are invalidated, and TWAI queue/bus errors are monitored. It decodes specific CAN message IDs from the Siemens SIMK43 ECU to extract:
 
 - **Coolant temperature** (CAN ID `0x329`)
 - **Vehicle speed & RPM** (used for fuel consumption calculation)
@@ -38,12 +38,15 @@ The voltmeter uses a weighted average of two sources:
 - **70%** — hardware ADC reading via a resistor voltage divider (100k / 20k) on GPIO 34, providing fast, real-time response
 - **30%** — ECU voltage report read from CAN bus (ID `0x545`), providing stable, calibrated reference
 
-This fusion approach gives both responsiveness and accuracy. In future production iterations, the analog part can be removed entirely — all data can be read exclusively from the CAN bus.
+Each voltage source is validated independently. The gauge blends ADC and fresh CAN data when both are available, falls back to either valid source when the other fails, and shows an unavailable value when neither source is trustworthy. In future production iterations, the analog part can be removed entirely — all data can be read exclusively from the CAN bus.
 
 ### Fuel Consumption Algorithm
 
-- **While driving** (speed > 0): displays average consumption in **L/100km** using a "Time Window Accumulation" algorithm for stable readings
-- **At idle** (speed = 0): switches to **L/h** (liters per hour)
+- Always displays consumption in **L/100km** — it never switches to L/h
+- Uses a rolling distance window covering approximately the most recent **1 km**
+- Sums actual fuel and actual distance instead of averaging instantaneous ratios
+- Includes fuel used during stops and acceleration, so urban driving is represented correctly
+- Shows `--.-` until at least 100 m has been travelled to avoid unstable startup values
 
 ### Ignition-Controlled Power
 
@@ -53,14 +56,14 @@ The device powers on only when the ignition is turned on (IGN +12V from the fact
 
 The gauge detects the car's illumination signal (ILL +12V) via GPIO 13. When headlights are on:
 
-- Display brightness is automatically reduced
-- UI color palette changes to a darker theme
+- UI colors and glow effects switch to a darker palette
+- The ILL input is debounced to prevent flickering caused by electrical noise
 
-This prevents glare and distraction during night driving.
+The current hardware does not expose a display backlight-control pin to the ESP32, so night mode dims the rendered UI rather than the physical backlight.
 
 ### Display & UI
 
-The round **1.28" GC9A01 IPS** display runs the **LVGL** graphics library at **60 FPS** via an overclocked SPI bus (80 MHz). The UI was designed using **SquareLine Studio**.
+The round **1.28" GC9A01 IPS** display runs the **LVGL** graphics library with partial-buffer rendering over an 80 MHz SPI bus. The UI was designed using **SquareLine Studio**. CAN reception is serviced before display work, while visible values are refreshed at approximately 30 FPS.
 
 ## Prototype Photos
 
@@ -140,7 +143,7 @@ The device connects to the factory **M15-B connector** (multi-gauge plug).
 The project uses **PlatformIO** in VS Code.
 
 ```bash
-git clone https://github.com/your-username/Mini_gauge_Hyundai_coupe.git
+git clone https://github.com/JakubSx01/Mini_gauge_Hyundai_coupe.git
 ```
 
 1. Open the project folder in VS Code with PlatformIO installed
@@ -152,7 +155,8 @@ git clone https://github.com/your-username/Mini_gauge_Hyundai_coupe.git
 In `src/main.cpp`:
 
 - `#define DEBUG_CAN_SNIFFER true/false` — enable raw CAN frame output on Serial Monitor (115200 baud)
-- `#define VOLT_CALIBRATION 6.532f` — calibrate voltage divider ratio against a multimeter
+- `#define VOLT_DIVIDER_RATIO 6.0f` — physical 100k/20k divider ratio
+- `#define VOLT_CALIBRATION 1.0f` — final correction factor calibrated against a multimeter
 
 ## Calibration
 
@@ -166,7 +170,7 @@ If the reading differs from an OBD2 scanner, adjust the offset in `src/main.cpp`
 
 ### Voltage
 
-If consistently off, adjust the `VOLT_CALIBRATION` define in `main.cpp`.
+The ADC path uses calibrated millivolt readings. If the displayed voltage is still consistently off, compare it with a trusted multimeter and adjust `VOLT_CALIBRATION` in `main.cpp` while leaving `VOLT_DIVIDER_RATIO` equal to the physical resistor ratio.
 
 ## 3D Printed Enclosure
 
