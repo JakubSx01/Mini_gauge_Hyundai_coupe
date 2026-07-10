@@ -2,8 +2,10 @@
 #define LOGIC_H
 
 // Declarations for our logic function
-void update_gauge_logic(float v, bool night_mode);
-void update_engine_status(int temp, float avg_fuel, bool is_night_mode);
+void update_gauge_logic(float v, bool value_valid, bool night_mode);
+void update_engine_status(int temp, bool temp_valid,
+                          float avg_fuel, bool fuel_valid,
+                          bool is_night_mode);
 
 // Rolling L/100 km calculated from fuel and distance over the most recent 1 km.
 // Fuel used while idling remains in the window, so city stops affect the result.
@@ -22,9 +24,17 @@ struct RecentFuelConsumption {
     double total_fuel_l;
     double next_checkpoint_km;
 
-    RecentFuelConsumption()
-        : next_index(1), count(1), total_distance_km(0.0),
-          total_fuel_l(0.0), next_checkpoint_km(0.01) {
+    RecentFuelConsumption() {
+        reset();
+    }
+
+    void reset() {
+        next_index = 1;
+        count = 1;
+        total_distance_km = 0.0;
+        total_fuel_l = 0.0;
+        next_checkpoint_km = 0.01;
+
         for (int i = 0; i < CHECKPOINT_COUNT; i++) {
             checkpoints[i].distance_km = 0.0;
             checkpoints[i].fuel_l = 0.0;
