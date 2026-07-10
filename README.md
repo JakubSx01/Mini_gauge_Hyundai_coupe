@@ -15,7 +15,7 @@ This project solves that problem. **Mini Gauge** is a compact, custom-built digi
 
 - **Voltmeter** — battery/charging system voltage
 - **Coolant temperature** — read directly from the ECU via CAN bus
-- **Average fuel consumption** — calculated in real-time (L/100km while driving, L/h at idle)
+- **Recent fuel consumption** — distance-weighted L/100km from the latest 1 km, including fuel used while idling
 
 Everything runs on an **ESP32** microcontroller with a round **1.28" IPS display (GC9A01)**, communicating with the car's ECU via a **CAN bus sniffer** based on the Siemens SIMK43/SIMK4x protocol documentation.
 
@@ -42,8 +42,11 @@ This fusion approach gives both responsiveness and accuracy. In future productio
 
 ### Fuel Consumption Algorithm
 
-- **While driving** (speed > 0): displays average consumption in **L/100km** using a "Time Window Accumulation" algorithm for stable readings
-- **At idle** (speed = 0): switches to **L/h** (liters per hour)
+- Always displays consumption in **L/100km** — it never switches to L/h
+- Uses a rolling distance window covering approximately the most recent **1 km**
+- Sums actual fuel and actual distance instead of averaging instantaneous ratios
+- Includes fuel used during stops and acceleration, so urban driving is represented correctly
+- Shows `--.-` until at least 100 m has been travelled to avoid unstable startup values
 
 ### Ignition-Controlled Power
 
