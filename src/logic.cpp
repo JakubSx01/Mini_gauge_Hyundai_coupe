@@ -125,7 +125,7 @@ void update_gauge_logic(float v, bool night_mode) {
 }
 
 // --- ENGINE STATUS LOGIC ---
-void update_engine_status(int temp, float avg_fuel, int speed, float lph, bool is_night_mode) {
+void update_engine_status(int temp, float avg_fuel, bool is_night_mode) {
     
     // Color Palette (Night vs Day)
     lv_color_t c_blue   = is_night_mode ? lv_color_hex(0x004466) : lv_color_hex(0x0000FF);
@@ -157,33 +157,32 @@ void update_engine_status(int temp, float avg_fuel, int speed, float lph, bool i
         lv_obj_set_style_img_recolor_opa(ui_uiTempimg, LV_OPA_COVER, 0);
     }
 
-    // 2. AVG FUEL LOGIC
-    // 0 - 7.0: Green (eco driving)
-    // 7.0 - 11.0: Orange (normal driving)
-    // > 11.0: Red (aggressive driving)
+    // 2. RECENT FUEL CONSUMPTION
+    // avg_fuel is a distance-weighted L/100km value from the most recent 1 km.
+    // A negative value means that less than 100 m has been travelled.
 
     lv_color_t fuelColor = c_def;
 
-    if (avg_fuel <= 7.0f)        fuelColor = c_green;
-    else if (avg_fuel <= 11.0f)  fuelColor = c_orange;
-    else                         fuelColor = c_red;
+    if (avg_fuel >= 0.0f) {
+        if (avg_fuel <= 7.0f)        fuelColor = c_green;
+        else if (avg_fuel <= 11.0f)  fuelColor = c_orange;
+        else                         fuelColor = c_red;
+    }
 
-    // Update Fuel UI
+    // The fuel field always shows L/100km. It never switches to L/h.
     if (ui_uiGaslevel) {
-        // --- DYNAMIC FUEL DISPLAY ---
-        if (speed > 5) {
-            // Car is moving - show average consumption per 100km
-            int fuel_int = (int)avg_fuel;
-            int fuel_dec = (int)((avg_fuel - fuel_int) * 10);
-            lv_label_set_text_fmt(ui_uiGaslevel, "%d.%d", fuel_int, fuel_dec);
+        if (avg_fuel < 0.0f) {
+            lv_label_set_text(ui_uiGaslevel, "--.-");
         } else {
-            // Car is stopped (or in traffic) - show instantaneous consumption per hour
-            int lph_int = (int)lph;
-            int lph_dec = (int)((lph - lph_int) * 10);
-            lv_label_set_text_fmt(ui_uiGaslevel, "%d.%d", lph_int, lph_dec);
+            // Round to one decimal place without relying on floating-point printf.
+            int fuel_tenths = (int)((avg_fuel * 10.0f) + 0.5f);
+            lv_label_set_text_fmt(ui_uiGaslevel, "%d.%d",
+                                  fuel_tenths / 10, fuel_tenths % 10);
         }
         lv_obj_set_style_text_color(ui_uiGaslevel, fuelColor, 0);
     }
+
+    // Keep the existing fuel icon and its day/night color behavior unchanged.
     if (ui_uiGas) {
         lv_obj_set_style_img_recolor(ui_uiGas, fuelColor, 0);
         lv_obj_set_style_img_recolor_opa(ui_uiGas, LV_OPA_COVER, 0);
